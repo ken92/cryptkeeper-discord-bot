@@ -24,16 +24,48 @@ const getClaimsChannel = async (guildId, client) => {
   return channel;
 };
 
-const sendNewMessage = async (guildId, client, claimsList) => {
+const deleteExistingMessages = async (channel, messageIds) => {
+  for (const messageId of messageIds) {
+    try {
+      const message = await channel.messages.fetch(messageId);
+      await message.delete();
+    } catch (error) {
+      console.error('Error deleting message:', error);
+    }
+  }
+};
+function splitClaimsListIntoChunks(claimsList, maxLength = 2000) {
+  const lines = claimsList.split('\n');
+  const chunks = [];
+  let currentChunk = '';
+
+  for (const line of lines) {
+    // +1 for the newline character
+    if ((currentChunk.length + line.length + 1) > maxLength) {
+      chunks.push(currentChunk);
+      currentChunk = '';
+    }
+    currentChunk += (currentChunk ? '\n' : '') + line;
+  }
+  if (currentChunk) chunks.push(currentChunk);
+  return chunks;
+}
+
+const sendNewMessages = async (guildId, client, claimsList) => {
   const channel = await getClaimsChannel(guildId, client);
   if (typeof channel === 'string') {
     return channel;
   }
 
-  const newMessage = await channel.send(claimsList);
-  client.database.set(`${guildId}-claimListMessageId`, newMessage.id);
+  const chunks = splitClaimsListIntoChunks(claimsList, 2000);
+  const messageIds = [];
+  for (const chunk of chunks) {
+    const newMessage = await channel.send(chunk);
+    messageIds.push(newMessage.id);
+  }
+  client.database.set(`${guildId}-claimListMessageId`, JSON.stringify(messageIds));
   return true;
-}
+};
 
 const getClaimsListString = (claimsList, statusEmojis, oneSharingStatus) => {
   if (!claimsList || claimsList.length === 0) {
@@ -96,9 +128,9 @@ module.exports = new ApplicationCommand({
     const oneSharingStatus = interaction.options.getBoolean('one_sharing_status');
     const claimsList = getClaimsListString(claims, { sharing, non_sharing, selective }, oneSharingStatus !== false);
 
-    const messageId = client.database.get(`${guildId}-claimListMessageId`);
-    if (!messageId) {
-      const errorOrTrue = await sendNewMessage(guildId, client, claimsList);
+    const existingMessageIds = JSON.parse(client.database.get(`${guildId}-claimListMessageId`) || '[]');
+    if (!existingMessageIds || existingMessageIds.length === 0) {
+      const errorOrTrue = await sendNewMessages(guildId, client, claimsList);
       if (errorOrTrue !== true) {
         return await interaction.reply({
           content: `Error sending new claim list message: ${errorOrTrue}`,
@@ -114,11 +146,11 @@ module.exports = new ApplicationCommand({
         });
       }
       try {
-        const existingMessage = await channel.messages.fetch(messageId);
-        await existingMessage.edit(claimsList);
+        await deleteExistingMessages(channel, existingMessageIds);
       } catch (error) {
-        return await sendNewMessage(guildId, client, claimsList);
+        console.error('Error deleting existing claim list messages:', error);
       }
+      await sendNewMessages(guildId, client, claimsList);
     }
 
     return await interaction.reply({
