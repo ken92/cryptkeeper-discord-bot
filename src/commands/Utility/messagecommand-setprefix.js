@@ -1,4 +1,4 @@
-const { Message } = require("discord.js");
+const { Message, PermissionsBitField } = require("discord.js");
 const DiscordBot = require("../../client/DiscordBot");
 const MessageCommand = require("../../structure/MessageCommand");
 const config = require("../../config");
@@ -7,7 +7,8 @@ module.exports = new MessageCommand({
     command: {
         name: 'setprefix',
         description: 'Set prefix for this guild.',
-        aliases: []
+        aliases: [],
+        permissions: [PermissionsBitField.Flags.ManageGuild]
     },
     options: {
         cooldown: 5000

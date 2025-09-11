@@ -1,0 +1,86 @@
+const { ChatInputCommandInteraction, SlashCommandBuilder } = require("discord.js");
+const DiscordBot = require("../../client/DiscordBot");
+const ApplicationCommand = require("../../structure/ApplicationCommand");
+
+const command = new SlashCommandBuilder()
+  .setName('searchpartners')
+  .setDescription('Search the claims list')
+  .addStringOption(option =>
+    option.setName('username')
+      .setDescription('The username of the person that requested the partner')
+      .setRequired(false))
+  .addStringOption(option =>
+    option.setName('partnername')
+      .setDescription('The name of the partner')
+      .setRequired(false))
+  .addStringOption(option =>
+    option.setName('partnersource')
+      .setDescription('The partner\'s source')
+      .setRequired(false))
+  .toJSON();
+
+module.exports = new ApplicationCommand({
+  command,
+  options: {
+    cooldown: 1000
+  },
+  /**
+   * 
+   * @param {DiscordBot} client 
+   * @param {ChatInputCommandInteraction} interaction 
+   */
+  run: async (client, interaction) => {
+    const guildId = interaction.guild.id;
+    const claims = client.database.get(`${guildId}-claims`) || [];
+    const username = interaction.options.getString('username');
+    const userId = interaction.options.getString('userid');
+    const user = interaction.options.getUser('user');
+    const partnerName = interaction.options.getString('partnername');
+    const partnerSource = interaction.options.getString('partnersource');
+
+    if (!username && !partnerName && !partnerSource && !user && !userId) {
+      await interaction.reply({
+        content: 'You must provide at least one search criteria (username, user, user ID, partner name, or partner source).',
+        ephemeral: true
+      });
+      return;
+    }
+
+    const cleanedUsername = username ? username.replace(/<@(\d+)>/, '$1') : null;
+    const trimmedUsername = cleanedUsername ? cleanedUsername.trim().toLowerCase() : null;
+    const trimmedPartnerName = partnerName ? partnerName.trim().toLowerCase() : null;
+    const trimmedPartnerSource = partnerSource ? partnerSource.trim().toLowerCase() : null;
+
+    const filteredClaims = claims.filter(c => {
+      const isMatchingUsername = trimmedUsername ? c.username.toLowerCase() === trimmedUsername : true;
+      const isMatchingPartnerName = trimmedPartnerName ? c.partnername.toLowerCase().includes(trimmedPartnerName) : true;
+      const isMatchingPartnerSource = trimmedPartnerSource ? c.partnersource.toLowerCase().includes(trimmedPartnerSource) : true;
+      return isMatchingUsername && isMatchingPartnerName && isMatchingPartnerSource;
+    });
+
+    if (filteredClaims.length === 0) {
+      await interaction.reply({
+        content: 'No claims found matching the provided criteria.',
+        ephemeral: true
+      });
+      return;
+    }
+
+    const statusEmojis = client.database.get(`${guildId}-statusEmojis`) || {};
+
+    let response = 'Found the following claims:\n';
+    for (const claim of filteredClaims) {
+      const statuses = [
+        claim.sharingstatus ? `  Status: ${claim.sharingstatus} ${statusEmojis[claim.sharingstatus] || ''}` : null,
+        claim.romantic_sharingstatus ? `  Romantic: ${claim.romantic_sharingstatus} ${statusEmojis[claim.romantic_sharingstatus] || ''}` : null,
+        claim.platonic_sharingstatus ? `  Platonic: ${claim.platonic_sharingstatus} ${statusEmojis[claim.platonic_sharingstatus] || ''}` : null
+      ].filter(s => Boolean(s)).join('\n');
+      response += `- Partner: ${claim.partnername} (${claim.partnersource}), Claimed by: ${claim.username}\n${statuses}\n`;
+    }
+
+    await interaction.reply({
+      content: response,
+      ephemeral: true
+    });
+  }
+}).toJSON();
