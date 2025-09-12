@@ -87,7 +87,7 @@ const getClaimsListString = (claimsList, statusEmojis, oneSharingStatus) => {
       result += `## ${currentLetter}\n`;
     }
     if (oneSharingStatus) {
-      result += `${statusEmojis[claim.sharingstatus]} ${claim.partnername} (${claim.partnersource})\n`;
+      result += `${statusEmojis[claim.sharingstatus || claim.romantic_sharingstatus || claim.platonic_sharingstatus]} ${claim.partnername} (${claim.partnersource})\n`;
     } else {
       result += `**${claim.partnername} (${claim.partnersource})**\n`;
       result += `Romantic: ${statusEmojis[claim.romantic_sharingstatus]} `;
@@ -127,12 +127,13 @@ module.exports = new ApplicationCommand({
 
     const oneSharingStatus = interaction.options.getBoolean('one_sharing_status');
     const claimsList = getClaimsListString(claims, { sharing, non_sharing, selective }, oneSharingStatus !== false);
+    await interaction.deferReply();
 
     const existingMessageIds = JSON.parse(client.database.get(`${guildId}-claimListMessageId`) || '[]');
     if (!existingMessageIds || existingMessageIds.length === 0) {
       const errorOrTrue = await sendNewMessages(guildId, client, claimsList);
       if (errorOrTrue !== true) {
-        return await interaction.reply({
+        return await interaction.editReply({
           content: `Error sending new claim list message: ${errorOrTrue}`,
           ephemeral: true
         });
@@ -140,7 +141,7 @@ module.exports = new ApplicationCommand({
     } else {
       const channel = await getClaimsChannel(guildId, client);
       if (typeof channel === 'string') {
-        return await interaction.reply({
+        return await interaction.editReply({
           content: `Error fetching claims channel: ${channel}`,
           ephemeral: true
         });
@@ -150,10 +151,16 @@ module.exports = new ApplicationCommand({
       } catch (error) {
         console.error('Error deleting existing claim list messages:', error);
       }
-      await sendNewMessages(guildId, client, claimsList);
+      const errorOrTrue = await sendNewMessages(guildId, client, claimsList);
+      if (errorOrTrue !== true) {
+        return await interaction.editReply({
+          content: `Error sending new claim list message: ${errorOrTrue}`,
+          ephemeral: true
+        });
+      }
     }
 
-    return await interaction.reply({
+    return await interaction.editReply({
       content: 'Claim list message refreshed successfully.'
     });
   }
