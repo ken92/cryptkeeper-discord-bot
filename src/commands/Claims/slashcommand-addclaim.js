@@ -104,9 +104,10 @@ module.exports = new ApplicationCommand({
         platonicStatus = sharingstatus;
       }
 
+      await interaction.deferReply();
       const claims = client.database.get(`${guildId}-claims`) || [];
       if (claims.some(c => c.partnername.toLowerCase() === partnername.trim().toLowerCase() && c.userId === userId)) {
-        return await interaction.reply({
+        return await interaction.editReply({
           content: `A claim for this partner "${partnername.trim()}" and user "${username}" already exists.`,
           ephemeral: true
         });
@@ -126,8 +127,9 @@ module.exports = new ApplicationCommand({
       });
       client.database.set(`${guildId}-claims`, claims);
 
-      await interaction.reply({
-        content: 'Claim added successfully.'
+      return await interaction.editReply({
+        content: 'Claim added successfully.',
+        ephemeral: true
       });
     } finally {
       release();
