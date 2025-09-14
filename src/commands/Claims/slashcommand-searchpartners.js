@@ -9,6 +9,14 @@ const command = new SlashCommandBuilder()
     option.setName('username')
       .setDescription('The username of the person that requested the partner')
       .setRequired(false))
+  .addUserOption(option =>
+    option.setName('user')
+      .setDescription('The user that requested the partner (@user notation)')
+      .setRequired(false))
+  .addStringOption(option =>
+    option.setName('userid')
+      .setDescription('The user ID of the person that requested the partner')
+      .setRequired(false))
   .addStringOption(option =>
     option.setName('partnername')
       .setDescription('The name of the partner')
@@ -46,8 +54,12 @@ module.exports = new ApplicationCommand({
       return;
     }
 
-    const cleanedUsername = username ? username.replace(/<@(\d+)>/, '$1') : null;
+    const usernameFromId = userId ? (await client.users.fetch(userId).catch(() => null))?.username : null;
+    const usernameFromUser = user ? user.username : null;
+    const finalUsername = usernameFromId || usernameFromUser || username;
+    const cleanedUsername = finalUsername ? finalUsername.replace(/<@(\d+)>/, '$1') : null;
     const trimmedUsername = cleanedUsername ? cleanedUsername.trim().toLowerCase() : null;
+
     const trimmedPartnerName = partnerName ? partnerName.trim().toLowerCase() : null;
     const trimmedPartnerSource = partnerSource ? partnerSource.trim().toLowerCase() : null;
 
