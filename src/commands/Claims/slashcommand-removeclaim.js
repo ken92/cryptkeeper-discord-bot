@@ -7,12 +7,12 @@ const command = new SlashCommandBuilder()
   .setName('removeclaim')
   .setDescription('Remove a partner claim')
   .addStringOption(option =>
-    option.setName('username')
-      .setDescription('The username of the person who requested the claim')
-      .setRequired(true))
-  .addStringOption(option =>
     option.setName('partnername')
       .setDescription('The name of the partner that was claimed')
+      .setRequired(true))
+  .addUserOption(option =>
+    option.setName('user')
+      .setDescription('The user who made the claim')
       .setRequired(false))
   .toJSON();
 
@@ -31,15 +31,23 @@ module.exports = new ApplicationCommand({
     const guildId = interaction.guild.id;
     try {
       const claims = client.database.get(`${guildId}-claims`) || [];
-      const username = interaction.options.getString('username');
       const partnerName = interaction.options.getString('partnername');
-  
+
       if (!partnerName) {
         await interaction.reply({
           content: 'You must provide a partner name to remove a claim.',
           ephemeral: true
         });
         return;
+      }
+
+      const user = interaction.options.getUser('user');
+      const username = user?.username;
+      if (user && !username) {
+        return await interaction.reply({
+          content: 'The selected user does not have a valid username. (Try rerunning with @user syntax)',
+          ephemeral: true
+        });
       }
   
       const trimmedUsername = username ? username.trim() : null;
