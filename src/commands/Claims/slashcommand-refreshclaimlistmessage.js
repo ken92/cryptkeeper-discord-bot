@@ -51,51 +51,60 @@ function splitClaimsListIntoChunks(claimsList, maxLength = 2000) {
   return chunks;
 }
 
-const sendNewMessages = async (guildId, client, claimsList) => {
+const sendNewMessages = async (guildId, client, claims, statusEmojis, oneSharingStatus) => {
   const channel = await getClaimsChannel(guildId, client);
   if (typeof channel === 'string') {
     return channel;
   }
 
-  const chunks = splitClaimsListIntoChunks(claimsList, 2000);
   const messageIds = [];
-  for (const chunk of chunks) {
+  for (const chunk of claimsListChunks(claims, statusEmojis, oneSharingStatus, 2000)) {
     const newMessage = await channel.send(chunk);
     messageIds.push(newMessage.id);
   }
+
+  const keyMessage = await channel.send(`**__Guide__**
+${statusEmojis.sharing} = Okay to share!
+${statusEmojis.non_sharing} = Not okay to share!
+${statusEmojis.selective} = Selective sharing!`);
+  messageIds.push(keyMessage.id);
+
   client.database.set(`${guildId}-claimListMessageId`, JSON.stringify(messageIds));
   return true;
 };
 
-const getClaimsListString = (claimsList, statusEmojis, oneSharingStatus) => {
-  if (!claimsList || claimsList.length === 0) {
-    return 'No claims found.';
-  }
-
-  claimsList.sort((a, b) => a.partnername.toLowerCase() > b.partnername.toLowerCase() ? 1 : -1);
-  let result = '';
+function* claimsListChunks(claims, statusEmojis, oneSharingStatus, maxLength = 2000) {
+  claims.sort((a, b) => a.partnername.toLowerCase() > b.partnername.toLowerCase() ? 1 : -1);
   let currentLetter = '';
+  let currentChunk = '';
 
-  for (const claim of claimsList) {
+  for (const claim of claims) {
     let firstLetter = claim.partnername[0].toUpperCase();
     if (!/[A-Z]/.test(firstLetter)) {
       firstLetter = 'Non-Alphabetic';
     }
 
+    let row = '';
     if (firstLetter !== currentLetter) {
       currentLetter = firstLetter;
-      result += `## ${currentLetter}\n`;
+      row += `## ${currentLetter}\n`;
     }
     if (oneSharingStatus) {
-      result += `${statusEmojis[claim.sharingstatus || claim.romantic_sharingstatus || claim.platonic_sharingstatus]} ${claim.partnername} (${claim.partnersource})\n`;
+      row += `${statusEmojis[claim.sharingstatus || claim.romantic_sharingstatus || claim.platonic_sharingstatus]} ${claim.partnername} (${claim.partnersource})\n`;
     } else {
-      result += `**${claim.partnername} (${claim.partnersource})**\n`;
-      result += `Romantic: ${statusEmojis[claim.romantic_sharingstatus]} `;
-      result += `Platonic: ${statusEmojis[claim.platonic_sharingstatus]}\n\n`;
+      row += `**${claim.partnername} (${claim.partnersource})**\n`;
+      row += `Romantic: ${statusEmojis[claim.romantic_sharingstatus]} `;
+      row += `Platonic: ${statusEmojis[claim.platonic_sharingstatus]}\n\n`;
     }
+
+    if (currentChunk.length + row.length > maxLength) {
+      yield currentChunk;
+      currentChunk = '';
+    }
+    currentChunk += row;
   }
-  return result;
-};
+  if (currentChunk) yield currentChunk;
+}
 
 module.exports = new ApplicationCommand({
   command,
@@ -109,8 +118,8 @@ module.exports = new ApplicationCommand({
    */
   run: async (client, interaction) => {
     const guildId = interaction.guild.id;
-    const {sharing, non_sharing, selective} = client.database.get(`${guildId}-statusEmojis`) || {};
-    if (!sharing || !non_sharing || !selective) {
+    const statusEmojis = client.database.get(`${guildId}-statusEmojis`) || {};
+    if (!statusEmojis.sharing || !statusEmojis.non_sharing || !statusEmojis.selective) {
       return await interaction.reply({
         content: 'Please set emojis for all statuses using /setstatusemoji before refreshing the claim list message.',
         ephemeral: true
@@ -125,13 +134,12 @@ module.exports = new ApplicationCommand({
       });
     }
 
-    const oneSharingStatus = interaction.options.getBoolean('one_sharing_status');
-    const claimsList = getClaimsListString(claims, { sharing, non_sharing, selective }, oneSharingStatus !== false);
+    const oneSharingStatus = interaction.options.getBoolean('one_sharing_status') !== false;
     await interaction.deferReply();
 
     const existingMessageIds = JSON.parse(client.database.get(`${guildId}-claimListMessageId`) || '[]');
     if (!existingMessageIds || existingMessageIds.length === 0) {
-      const errorOrTrue = await sendNewMessages(guildId, client, claimsList);
+      const errorOrTrue = await sendNewMessages(guildId, client, claims, statusEmojis, oneSharingStatus);
       if (errorOrTrue !== true) {
         return await interaction.editReply({
           content: `Error sending new claim list message: ${errorOrTrue}`,
@@ -151,7 +159,7 @@ module.exports = new ApplicationCommand({
       } catch (error) {
         console.error('Error deleting existing claim list messages:', error);
       }
-      const errorOrTrue = await sendNewMessages(guildId, client, claimsList);
+      const errorOrTrue = await sendNewMessages(guildId, client, claims, statusEmojis, oneSharingStatus);
       if (errorOrTrue !== true) {
         return await interaction.editReply({
           content: `Error sending new claim list message: ${errorOrTrue}`,
