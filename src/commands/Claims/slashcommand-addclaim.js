@@ -61,6 +61,7 @@ module.exports = new ApplicationCommand({
     const release = await claimLock.acquire();
     const guildId = interaction.guild.id;
     try {
+      console.log('Adding claim...');
       const user = interaction.options.getUser('user');
       if (!user) {
         return await interaction.reply({
@@ -132,6 +133,7 @@ module.exports = new ApplicationCommand({
         ephemeral: true
       });
     } finally {
+      console.log('Adding claim complete.');
       release();
     }
   }

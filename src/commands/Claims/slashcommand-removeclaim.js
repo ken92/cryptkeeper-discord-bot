@@ -14,6 +14,10 @@ const command = new SlashCommandBuilder()
     option.setName('user')
       .setDescription('The user who made the claim')
       .setRequired(false))
+  .addStringOption(option =>
+    option.setName('userid')
+      .setDescription('The ID of the user who made the claim')
+      .setRequired(false))
   .toJSON();
 
 module.exports = new ApplicationCommand({
@@ -42,21 +46,21 @@ module.exports = new ApplicationCommand({
       }
 
       const user = interaction.options.getUser('user');
-      const username = user?.username;
-      if (user && !username) {
+      const inputUserId = interaction.options.getString('userid');
+      const userId = (user?.id || inputUserId)?.trim();
+      if (user && !userId) {
         return await interaction.reply({
-          content: 'The selected user does not have a valid username. (Try rerunning with @user syntax)',
+          content: 'The selected user does not have a valid ID. (Try rerunning with @user syntax)',
           ephemeral: true
         });
       }
   
-      const trimmedUsername = username ? username.trim() : null;
+      console.log('Removing claim...');
       const trimmedPartnerName = partnerName.trim();
-  
       const newClaims = claims.filter(c => {
-        const isMatchingUsername = trimmedUsername ? c.username.toLowerCase() === trimmedUsername.toLowerCase() : true;
+        const isMatchingUserId = userId ? c.userid === userId : true;
         const isMatchingPartnerName = c.partnername.toLowerCase() === trimmedPartnerName.toLowerCase();
-        return !(isMatchingUsername && isMatchingPartnerName);
+        return !(isMatchingUserId && isMatchingPartnerName);
       });
       if (newClaims.length === claims.length) {
         await interaction.reply({
@@ -71,6 +75,7 @@ module.exports = new ApplicationCommand({
         content: `${claims.length - newClaims.length} claim(s) removed successfully.`
       });
     } finally {
+      console.log('Claim removal process completed.');
       release();
     }
   }

@@ -136,6 +136,7 @@ module.exports = new ApplicationCommand({
 
     const oneSharingStatus = interaction.options.getBoolean('one_sharing_status') !== false;
     await interaction.deferReply();
+    console.log('Refreshing claim list message...');
 
     const existingMessageIds = JSON.parse(client.database.get(`${guildId}-claimListMessageId`) || '[]');
     if (!existingMessageIds || existingMessageIds.length === 0) {
@@ -168,6 +169,7 @@ module.exports = new ApplicationCommand({
       }
     }
 
+    console.log('Refreshed claim list message.');
     return await interaction.editReply({
       content: 'Claim list message refreshed successfully.'
     });
