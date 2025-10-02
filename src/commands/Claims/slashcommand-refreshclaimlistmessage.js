@@ -34,22 +34,6 @@ const deleteExistingMessages = async (channel, messageIds) => {
     }
   }
 };
-function splitClaimsListIntoChunks(claimsList, maxLength = 2000) {
-  const lines = claimsList.split('\n');
-  const chunks = [];
-  let currentChunk = '';
-
-  for (const line of lines) {
-    // +1 for the newline character
-    if ((currentChunk.length + line.length + 1) > maxLength) {
-      chunks.push(currentChunk);
-      currentChunk = '';
-    }
-    currentChunk += (currentChunk ? '\n' : '') + line;
-  }
-  if (currentChunk) chunks.push(currentChunk);
-  return chunks;
-}
 
 const sendNewMessages = async (guildId, client, claims, statusEmojis, oneSharingStatus) => {
   const channel = await getClaimsChannel(guildId, client);
@@ -58,7 +42,7 @@ const sendNewMessages = async (guildId, client, claims, statusEmojis, oneSharing
   }
 
   const messageIds = [];
-  for (const chunk of claimsListChunks(claims, statusEmojis, oneSharingStatus, 2000)) {
+  for (const chunk of claimsListChunks(client, guildId, claims, statusEmojis, oneSharingStatus, 2000)) {
     const newMessage = await channel.send(chunk);
     messageIds.push(newMessage.id);
   }
@@ -73,8 +57,9 @@ ${statusEmojis.selective} = Selective sharing!`);
   return true;
 };
 
-function* claimsListChunks(claims, statusEmojis, oneSharingStatus, maxLength = 2000) {
+function* claimsListChunks(client, guildId, claims, statusEmojis, oneSharingStatus, maxLength = 2000) {
   claims.sort((a, b) => a.partnername.toLowerCase() > b.partnername.toLowerCase() ? 1 : -1);
+  client.database.set(`${guildId}-claims`, claims);
   let currentLetter = '';
   let currentChunk = '';
 
