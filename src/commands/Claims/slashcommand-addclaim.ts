@@ -5,7 +5,7 @@ import ApplicationCommand from '../../structure/ApplicationCommand';
 import claimLock from '../../utils/claimLock';
 
 const command = new SlashCommandBuilder()
-  .setName('addclaimts')
+  .setName('addclaim')
   .setDescription('Add a partner claim')
   .addUserOption(option =>
     option.setName('user')

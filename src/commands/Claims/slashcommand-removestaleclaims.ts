@@ -5,7 +5,7 @@ import ApplicationCommand from '../../structure/ApplicationCommand';
 import claimLock from '../../utils/claimLock';
 
 const command = new SlashCommandBuilder()
-  .setName('removestaleclaimsts')
+  .setName('removestaleclaims')
   .setDescription('Remove claims for users who have left the server')
   .toJSON();
 

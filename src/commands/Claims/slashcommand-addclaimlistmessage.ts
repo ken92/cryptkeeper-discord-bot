@@ -5,7 +5,7 @@ import ApplicationCommand from '../../structure/ApplicationCommand';
 import claimLock from '../../utils/claimLock';
 
 const command = new SlashCommandBuilder()
-  .setName('addclaimlistmessagets')
+  .setName('addclaimlistmessage')
   .setDescription('Add an ID of which messages to use for the claim list')
   .addStringOption(option =>
     option.setName('messageid')

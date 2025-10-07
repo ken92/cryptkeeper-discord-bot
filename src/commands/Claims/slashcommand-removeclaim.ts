@@ -5,7 +5,7 @@ import ApplicationCommand from '../../structure/ApplicationCommand';
 import claimLock from '../../utils/claimLock';
 
 const command = new SlashCommandBuilder()
-  .setName('removeclaimts')
+  .setName('removeclaim')
   .setDescription('Remove a partner claim')
   .addStringOption(option =>
     option.setName('partnername')

@@ -4,7 +4,7 @@ import { SlashCommandBuilder } from 'discord.js';
 import ApplicationCommand from '../../structure/ApplicationCommand';
 
 const command = new SlashCommandBuilder()
-  .setName('refreshclaimlistmessagets')
+  .setName('refreshclaimlistmessage')
   .setDescription('Refresh the claims list that the users can see')
   .addBooleanOption(option =>
     option.setName('one_sharing_status')
