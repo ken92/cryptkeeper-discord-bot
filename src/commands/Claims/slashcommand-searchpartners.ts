@@ -83,7 +83,7 @@ export default new ApplicationCommand<ChatInputCommandInteraction>({
       return;
     }
 
-    const statusEmojis = client.database.get(`${guildId}-statusEmojis`) || {};
+    const statusEmojis = (client.database.get(`${guildId}-statusEmojis`) || {}) as Record<string, string>;
 
     let response = 'Found the following claims:\n';
     for (const claim of filteredClaims) {
