@@ -1,6 +1,7 @@
-const { SlashCommandBuilder } = require('discord.js');
-const DiscordBot = require('../../client/DiscordBot');
-const ApplicationCommand = require('../../structure/ApplicationCommand');
+import type DiscordBot from '../../client/DiscordBot';
+import { SlashCommandBuilder } from 'discord.js';
+import type { ChatInputCommandInteraction } from 'discord.js';
+import ApplicationCommand from '../../structure/ApplicationCommand';
 
 const command = new SlashCommandBuilder()
   .setName('setstatusemoji')
@@ -19,21 +20,26 @@ const command = new SlashCommandBuilder()
     option.setName('emoji')
       .setDescription('The emoji to use for this status (Unicode or custom emoji)')
       .setRequired(true)
-  );
+  )
+  .toJSON();
 
-module.exports = new ApplicationCommand({
+export default new ApplicationCommand<ChatInputCommandInteraction>({
   command,
   options: {
     cooldown: 1000
   },
-  /**
-   * @param {DiscordBot} client
-   * @param {import('discord.js').ChatInputCommandInteraction} interaction
-   */
-  run: async (client, interaction) => {
+  run: async (client: DiscordBot, interaction: ChatInputCommandInteraction) => {
     const status = interaction.options.getString('status');
     const emoji = interaction.options.getString('emoji');
-    const guildId = interaction.guild.id;
+    const guildId = interaction.guild?.id;
+
+    if (!guildId) {
+      await interaction.reply({
+        content: 'This command must be used in a guild.',
+        ephemeral: true
+      });
+      return;
+    }
 
     if (!status || !emoji) {
       await interaction.reply({
@@ -43,13 +49,16 @@ module.exports = new ApplicationCommand({
       return;
     }
 
-    const emojiMap = client.database.get(`${guildId}-statusEmojis`) || {};
+    const emojiMap = (client.database.get(`${guildId}-statusEmojis`) || {}) as Record<string, string>;
     emojiMap[status] = emoji;
-    client.database.set(`${guildId}-statusEmojis`, emojiMap);
+    client.database.set(`${guildId}-statusEmojis`, emojiMap as never);
 
     await interaction.reply({
       content: `Emoji for status "${status}" set to: ${emoji}`,
       ephemeral: true
     });
   }
-}).toJSON();
+});
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+module.exports = (module.exports as any).default || module.exports;

@@ -1,9 +1,10 @@
-const { ChatInputCommandInteraction, SlashCommandBuilder } = require("discord.js");
-const DiscordBot = require("../../client/DiscordBot");
-const ApplicationCommand = require("../../structure/ApplicationCommand");
+import type DiscordBot from '../../client/DiscordBot';
+import type { ChatInputCommandInteraction } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
+import ApplicationCommand from '../../structure/ApplicationCommand';
 
 const command = new SlashCommandBuilder()
-  .setName('refreshclaimlistmessage')
+  .setName('refreshclaimlistmessagets')
   .setDescription('Refresh the claims list that the users can see')
   .addBooleanOption(option =>
     option.setName('one_sharing_status')
@@ -11,37 +12,48 @@ const command = new SlashCommandBuilder()
       .setRequired(false))
   .toJSON();
 
-const getClaimsChannel = async (guildId, client) => {
+const getClaimsChannel = async (guildId: string, client: DiscordBot): Promise<any | string> => {
   const channelId = client.database.get(`${guildId}-claimListChannelId`);
   if (!channelId) {
     return 'No channel set for the claim list.';
   }
 
-  const channel = await client.channels.fetch(channelId);
-  if (!channel || !channel.isTextBased()) {
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel || !channel.isTextBased?.()) {
+      return 'Channel not found or is not a text channel.';
+    }
+    return channel;
+  } catch (err) {
     return 'Channel not found or is not a text channel.';
   }
-  return channel;
 };
 
-const deleteExistingMessages = async (channel, messageIds) => {
+const deleteExistingMessages = async (channel: any, messageIds: string[]) => {
   for (const messageId of messageIds) {
     try {
       const message = await channel.messages.fetch(messageId);
-      await message.delete();
+      if (message) await message.delete();
     } catch (error) {
+      // ignore missing/deleted messages and log other errors
       console.error('Error deleting message:', error);
     }
   }
 };
 
-const sendNewMessages = async (guildId, client, claims, statusEmojis, oneSharingStatus) => {
+const sendNewMessages = async (
+  guildId: string,
+  client: DiscordBot,
+  claims: any[],
+  statusEmojis: Record<string, string>,
+  oneSharingStatus: boolean
+): Promise<true | string> => {
   const channel = await getClaimsChannel(guildId, client);
   if (typeof channel === 'string') {
     return channel;
   }
 
-  const messageIds = [];
+  const messageIds: string[] = [];
   for (const chunk of claimsListChunks(client, guildId, claims, statusEmojis, oneSharingStatus, 2000)) {
     const newMessage = await channel.send(chunk);
     messageIds.push(newMessage.id);
@@ -53,18 +65,31 @@ ${statusEmojis.non_sharing} = Not okay to share!
 ${statusEmojis.selective} = Selective sharing!`);
   messageIds.push(keyMessage.id);
 
-  client.database.set(`${guildId}-claimListMessageId`, JSON.stringify(messageIds));
+  client.database.set(`${guildId}-claimListMessageId`, JSON.stringify(messageIds) as never);
   return true;
 };
 
-function* claimsListChunks(client, guildId, claims, statusEmojis, oneSharingStatus, maxLength = 2000) {
-  claims.sort((a, b) => a.partnername.toLowerCase() > b.partnername.toLowerCase() ? 1 : -1);
-  client.database.set(`${guildId}-claims`, claims);
+function* claimsListChunks(
+  client: DiscordBot,
+  guildId: string,
+  claims: any[],
+  statusEmojis: Record<string, string>,
+  oneSharingStatus: boolean,
+  maxLength = 2000
+): Generator<string, void, unknown> {
+  // sort claims by partnername (case-insensitive)
+  claims.sort((a: any, b: any) =>
+    String(a.partnername).toLowerCase() > String(b.partnername).toLowerCase() ? 1 : -1
+  );
+  // persist sorted claims back to DB (keeps consistent order)
+  client.database.set(`${guildId}-claims`, claims as never);
+
   let currentLetter = '';
   let currentChunk = '';
 
   for (const claim of claims) {
-    let firstLetter = claim.partnername[0].toUpperCase();
+    const partnername = String(claim.partnername || '');
+    let firstLetter = partnername.charAt(0).toUpperCase() || '';
     if (!/[A-Z]/.test(firstLetter)) {
       firstLetter = 'Non-Alphabetic';
     }
@@ -74,36 +99,46 @@ function* claimsListChunks(client, guildId, claims, statusEmojis, oneSharingStat
       currentLetter = firstLetter;
       row += `## ${currentLetter}\n`;
     }
+
     if (oneSharingStatus) {
-      row += `${statusEmojis[claim.sharingstatus || claim.romantic_sharingstatus || claim.platonic_sharingstatus]} ${claim.partnername} (${claim.partnersource})\n`;
+      const status = claim.sharingstatus || claim.romantic_sharingstatus || claim.platonic_sharingstatus || '';
+      row += `${statusEmojis[status] || ''} ${partnername} (${claim.partnersource || ''})\n`;
     } else {
-      row += `**${claim.partnername} (${claim.partnersource})**\n`;
-      row += `Romantic: ${statusEmojis[claim.romantic_sharingstatus]} `;
-      row += `Platonic: ${statusEmojis[claim.platonic_sharingstatus]}\n\n`;
+      row += `**${partnername} (${claim.partnersource || ''})**\n`;
+      row += `Romantic: ${statusEmojis[claim.romantic_sharingstatus] || ''} `;
+      row += `Platonic: ${statusEmojis[claim.platonic_sharingstatus] || ''}\n\n`;
     }
 
-    if (currentChunk.length + row.length > maxLength) {
-      yield currentChunk;
+    // if adding this row would exceed maxLength, yield current chunk first
+    if ((currentChunk.length + row.length) > maxLength) {
+      if (currentChunk) {
+        yield currentChunk;
+      }
       currentChunk = '';
     }
     currentChunk += row;
   }
+
   if (currentChunk) yield currentChunk;
 }
 
-module.exports = new ApplicationCommand({
+export default new ApplicationCommand<ChatInputCommandInteraction>({
   command,
   options: {
     cooldown: 1000
   },
   /**
-   * 
-   * @param {DiscordBot} client 
-   * @param {ChatInputCommandInteraction} interaction 
+   *
+   * @param {DiscordBot} client
+   * @param {ChatInputCommandInteraction} interaction
    */
-  run: async (client, interaction) => {
-    const guildId = interaction.guild.id;
-    const statusEmojis = client.database.get(`${guildId}-statusEmojis`) || {};
+  run: async (client: DiscordBot, interaction: ChatInputCommandInteraction) => {
+    const guildId = interaction.guild?.id;
+    if (!guildId) {
+      return await interaction.reply({ content: 'This command must be used in a guild.', ephemeral: true });
+    }
+
+    const statusEmojis = (client.database.get(`${guildId}-statusEmojis`) || {}) as Record<string, string>;
     if (!statusEmojis.sharing || !statusEmojis.non_sharing || !statusEmojis.selective) {
       return await interaction.reply({
         content: 'Please set emojis for all statuses using /setstatusemoji before refreshing the claim list message.',
@@ -129,7 +164,6 @@ module.exports = new ApplicationCommand({
       if (errorOrTrue !== true) {
         return await interaction.editReply({
           content: `Error sending new claim list message: ${errorOrTrue}`,
-          ephemeral: true
         });
       }
     } else {
@@ -137,7 +171,6 @@ module.exports = new ApplicationCommand({
       if (typeof channel === 'string') {
         return await interaction.editReply({
           content: `Error fetching claims channel: ${channel}`,
-          ephemeral: true
         });
       }
       try {
@@ -149,7 +182,6 @@ module.exports = new ApplicationCommand({
       if (errorOrTrue !== true) {
         return await interaction.editReply({
           content: `Error sending new claim list message: ${errorOrTrue}`,
-          ephemeral: true
         });
       }
     }
@@ -159,4 +191,7 @@ module.exports = new ApplicationCommand({
       content: 'Claim list message refreshed successfully.'
     });
   }
-}).toJSON();
+});
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+module.exports = (module.exports as any).default || module.exports;

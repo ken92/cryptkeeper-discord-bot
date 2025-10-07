@@ -1,6 +1,7 @@
-const { ChatInputCommandInteraction, SlashCommandBuilder } = require("discord.js");
-const DiscordBot = require("../../client/DiscordBot");
-const ApplicationCommand = require("../../structure/ApplicationCommand");
+import type DiscordBot from '../../client/DiscordBot';
+import type { ChatInputCommandInteraction } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
+import ApplicationCommand from '../../structure/ApplicationCommand';
 
 const command = new SlashCommandBuilder()
   .setName('searchpartners')
@@ -23,28 +24,28 @@ const command = new SlashCommandBuilder()
       .setRequired(false))
   .addStringOption(option =>
     option.setName('partnersource')
-      .setDescription('The partner\'s source')
+      .setDescription("The partner's source")
       .setRequired(false))
   .toJSON();
 
-module.exports = new ApplicationCommand({
+export default new ApplicationCommand<ChatInputCommandInteraction>({
   command,
   options: {
     cooldown: 1000
   },
-  /**
-   * 
-   * @param {DiscordBot} client 
-   * @param {ChatInputCommandInteraction} interaction 
-   */
-  run: async (client, interaction) => {
-    const guildId = interaction.guild.id;
-    const claims = client.database.get(`${guildId}-claims`) || [];
-    const username = interaction.options.getString('username');
-    const userId = interaction.options.getString('userid');
-    const user = interaction.options.getUser('user');
-    const partnerName = interaction.options.getString('partnername');
-    const partnerSource = interaction.options.getString('partnersource');
+  run: async (client: DiscordBot, interaction: ChatInputCommandInteraction) => {
+    const guildId = interaction.guild?.id;
+    if (!guildId) {
+      await interaction.reply({ content: 'This command must be used in a guild.', ephemeral: true });
+      return;
+    }
+
+    const claims: any[] = client.database.get(`${guildId}-claims`) || [];
+    const username = interaction.options.getString('username') || null;
+    const userId = interaction.options.getString('userid') || null;
+    const user = interaction.options.getUser('user') || null;
+    const partnerName = interaction.options.getString('partnername') || null;
+    const partnerSource = interaction.options.getString('partnersource') || null;
 
     if (!username && !partnerName && !partnerSource && !user && !userId) {
       await interaction.reply({
@@ -54,19 +55,23 @@ module.exports = new ApplicationCommand({
       return;
     }
 
-    const usernameFromId = userId ? (await client.users.fetch(userId).catch(() => null))?.username : null;
+    const usernameFromId = userId ? (await client.users.fetch(userId).catch(() => null))?.username ?? null : null;
     const usernameFromUser = user ? user.username : null;
     const finalUsername = usernameFromId || usernameFromUser || username;
-    const cleanedUsername = finalUsername ? finalUsername.replace(/<@(\d+)>/, '$1') : null;
+    const cleanedUsername = finalUsername ? finalUsername.replace(/<@!?(\d+)>/, '$1') : null;
     const trimmedUsername = cleanedUsername ? cleanedUsername.trim().toLowerCase() : null;
 
     const trimmedPartnerName = partnerName ? partnerName.trim().toLowerCase() : null;
     const trimmedPartnerSource = partnerSource ? partnerSource.trim().toLowerCase() : null;
 
     const filteredClaims = claims.filter(c => {
-      const isMatchingUsername = trimmedUsername ? c.username.toLowerCase() === trimmedUsername : true;
-      const isMatchingPartnerName = trimmedPartnerName ? c.partnername.toLowerCase().includes(trimmedPartnerName) : true;
-      const isMatchingPartnerSource = trimmedPartnerSource ? c.partnersource.toLowerCase().includes(trimmedPartnerSource) : true;
+      const claimUsername = c.username ? String(c.username).toLowerCase() : '';
+      const claimPartnerName = c.partnername ? String(c.partnername).toLowerCase() : '';
+      const claimPartnerSource = c.partnersource ? String(c.partnersource).toLowerCase() : '';
+
+      const isMatchingUsername = trimmedUsername ? claimUsername === trimmedUsername : true;
+      const isMatchingPartnerName = trimmedPartnerName ? claimPartnerName.includes(trimmedPartnerName) : true;
+      const isMatchingPartnerSource = trimmedPartnerSource ? claimPartnerSource.includes(trimmedPartnerSource) : true;
       return isMatchingUsername && isMatchingPartnerName && isMatchingPartnerSource;
     });
 
@@ -86,7 +91,7 @@ module.exports = new ApplicationCommand({
         claim.sharingstatus ? `  Status: ${claim.sharingstatus} ${statusEmojis[claim.sharingstatus] || ''}` : null,
         claim.romantic_sharingstatus ? `  Romantic: ${claim.romantic_sharingstatus} ${statusEmojis[claim.romantic_sharingstatus] || ''}` : null,
         claim.platonic_sharingstatus ? `  Platonic: ${claim.platonic_sharingstatus} ${statusEmojis[claim.platonic_sharingstatus] || ''}` : null
-      ].filter(s => Boolean(s)).join('\n');
+      ].filter(Boolean).join('\n');
       response += `- Partner: ${claim.partnername} (${claim.partnersource}), Claimed by: ${claim.username}\n${statuses}\n`;
     }
 
@@ -95,4 +100,7 @@ module.exports = new ApplicationCommand({
       ephemeral: true
     });
   }
-}).toJSON();
+});
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+module.exports = (module.exports as any).default || module.exports;

@@ -18,7 +18,7 @@ class CommandsHandler {
 
   load = () => {
     for (const directory of readdirSync('./src/commands/')) {
-      for (const file of readdirSync('./src/commands/' + directory).filter((f) => f.endsWith('.js'))) {
+      for (const file of readdirSync('./src/commands/' + directory).filter((f) => f.endsWith('.ts') || f.endsWith('.js'))) {
         try {
           /**
            * @type {ApplicationCommand['data'] | MessageCommand['data']}

@@ -1,10 +1,11 @@
-const { ChatInputCommandInteraction, SlashCommandBuilder } = require("discord.js");
-const DiscordBot = require("../../client/DiscordBot");
-const ApplicationCommand = require("../../structure/ApplicationCommand");
-const claimLock = require('../../utils/claimLock');
+import type DiscordBot from '../../client/DiscordBot';
+import type { ChatInputCommandInteraction, User } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
+import ApplicationCommand from '../../structure/ApplicationCommand';
+import claimLock from '../../utils/claimLock';
 
 const command = new SlashCommandBuilder()
-  .setName('addclaim')
+  .setName('addclaimts')
   .setDescription('Add a partner claim')
   .addUserOption(option =>
     option.setName('user')
@@ -16,7 +17,7 @@ const command = new SlashCommandBuilder()
       .setRequired(true))
   .addStringOption(option =>
     option.setName('partnersource')
-      .setDescription('The partner\'s source')
+      .setDescription("The partner's source")
       .setRequired(true))
   .addStringOption(option =>
     option.setName('romantic_sharingstatus')
@@ -47,7 +48,7 @@ const command = new SlashCommandBuilder()
       ))
   .toJSON();
 
-module.exports = new ApplicationCommand({
+export default new ApplicationCommand({
   command,
   options: {
     cooldown: 1000
@@ -57,45 +58,59 @@ module.exports = new ApplicationCommand({
    * @param {DiscordBot} client 
    * @param {ChatInputCommandInteraction} interaction 
    */
-  run: async (client, interaction) => {
+  run: async (client: DiscordBot, interaction: ChatInputCommandInteraction) => {
+    // async-mutex Mutex.acquire() returns a release function
     const release = await claimLock.acquire();
-    const guildId = interaction.guild.id;
+    const guildId = interaction.guild?.id;
+    if (!guildId) {
+      try {
+        await interaction.reply({ content: 'This command must be used in a guild.', ephemeral: true });
+      } finally {
+        release();
+      }
+      return;
+    }
+
     try {
-      console.log('Adding claim...');
-      const user = interaction.options.getUser('user');
+      const user: User | null = interaction.options.getUser('user');
       if (!user) {
-        return await interaction.reply({
+        await interaction.reply({
           content: 'You must provide a user to add a claim.',
           ephemeral: true
         });
+        return;
       }
-  
+
       const username = user.username;
       const userId = user.id;
       if (!username || !userId) {
-        return await interaction.reply({
+        await interaction.reply({
           content: 'The selected user does not have a valid username or ID.',
           ephemeral: true
         });
+        return;
       }
-  
+
       const partnername = interaction.options.getString('partnername');
       const partnersource = interaction.options.getString('partnersource');
       if (!partnername || !partnersource) {
-        return await interaction.reply({
+        await interaction.reply({
           content: 'You must provide both a partnername and partnersource to add a claim.',
           ephemeral: true
         });
+        return;
       }
-  
-      const sharingstatus = interaction.options.getString('sharingstatus');
-      const romantic_sharingstatus = interaction.options.getString('romantic_sharingstatus');
-      const platonic_sharingstatus = interaction.options.getString('platonic_sharingstatus');
+
+      const sharingstatus = interaction.options.getString('sharingstatus') ?? null;
+      const romantic_sharingstatus = interaction.options.getString('romantic_sharingstatus') ?? null;
+      const platonic_sharingstatus = interaction.options.getString('platonic_sharingstatus') ?? null;
+
       if (!sharingstatus && !romantic_sharingstatus && !platonic_sharingstatus) {
-        return await interaction.reply({
+        await interaction.reply({
           content: 'You must provide at least one sharing status (sharingstatus, romantic_sharingstatus, or platonic_sharingstatus).',
           ephemeral: true
         });
+        return;
       }
 
       let romanticStatus = romantic_sharingstatus;
@@ -106,35 +121,41 @@ module.exports = new ApplicationCommand({
       }
 
       await interaction.deferReply();
-      const claims = client.database.get(`${guildId}-claims`) || [];
-      if (claims.some(c => c.partnername.toLowerCase() === partnername.trim().toLowerCase() && c.userId === userId)) {
-        return await interaction.editReply({
+
+      const claimsKey = `${guildId}-claims`;
+      const claims: any[] = client.database.get(claimsKey) || [];
+
+      const partnerLower = partnername.trim().toLowerCase();
+      if (claims.some(c => (c.partnername?.toLowerCase?.() === partnerLower) && c.userId === userId)) {
+        await interaction.editReply({
           content: `A claim for this partner "${partnername.trim()}" and user "${username}" already exists.`,
-          ephemeral: true
         });
+        return;
       }
-  
+
       claims.push({
         partnername: partnername.trim(),
         partnersource: partnersource.trim(),
         username,
         userId,
-        sharingstatus: sharingstatus?.trim(),
-        romantic_sharingstatus: romanticStatus?.trim(),
-        platonic_sharingstatus: platonicStatus?.trim(),
+        sharingstatus: sharingstatus?.trim() ?? null,
+        romantic_sharingstatus: romanticStatus?.trim() ?? null,
+        platonic_sharingstatus: platonicStatus?.trim() ?? null,
         addedById: interaction.user.id,
-        addedByUsername: `${interaction.user.username}#${interaction.user.discriminator}`,
+        addedByUsername: `${interaction.user.username}#${(interaction.user as any).discriminator || ''}`,
         timestamp: Date.now(),
       });
-      client.database.set(`${guildId}-claims`, claims);
 
-      return await interaction.editReply({
+      client.database.set(claimsKey, claims);
+
+      await interaction.editReply({
         content: 'Claim added successfully.',
-        ephemeral: true
       });
     } finally {
-      console.log('Adding claim complete.');
       release();
     }
   }
-}).toJSON();
+});
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+module.exports = (module.exports as any).default || module.exports;
