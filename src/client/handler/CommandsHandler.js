@@ -1,4 +1,5 @@
 const { REST, Routes } = require('discord.js');
+const path = require('path');
 const { info, error, success } = require('../../utils/Console');
 const { readdirSync } = require('fs');
 const DiscordBot = require('../DiscordBot');
@@ -17,13 +18,16 @@ class CommandsHandler {
   }
 
   load = () => {
-    for (const directory of readdirSync('./src/commands/')) {
-      for (const file of readdirSync('./src/commands/' + directory).filter((f) => f.endsWith('.ts') || f.endsWith('.js'))) {
+    const commandsRoot = path.join(__dirname, '..', '..', 'commands'); // resolves to src/commands (dev) or dist/commands (build)
+    for (const directory of readdirSync(commandsRoot)) {
+      const dirPath = path.join(commandsRoot, directory);
+      for (const file of readdirSync(dirPath).filter((f) => f.endsWith('.js') || f.endsWith('.ts'))) {
         try {
           /**
            * @type {ApplicationCommand['data'] | MessageCommand['data']}
            */
-          const module = require('../../commands/' + directory + '/' + file);
+          const modulePath = path.join(dirPath, file);
+          const module = require(modulePath);
 
           if (!module) continue;
 
@@ -57,7 +61,7 @@ class CommandsHandler {
           }
         } catch (err) {
           console.error(err);
-          error('Unable to load a command from the path: ' + 'src/commands/' + directory + '/' + file);
+          error('Unable to load a command from the path: ' + path.relative(process.cwd(), path.join(dirPath, file)));
         }
       }
     }
