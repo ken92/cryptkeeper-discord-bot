@@ -74,6 +74,11 @@ export default new ApplicationCommand<ChatInputCommandInteraction>({
         return `${id} — names: ${names} — partners: ${partners}`;
       });
 
+      const newClaims = (claims as any[]).filter(c => {
+        return !missing.includes(c.userId);
+      });
+      client.database.set(`${guild.id}-claims`, newClaims as never);
+
       // Optionally remove claims here or return the list for manual inspection
       await interaction.editReply({
         content: `The following user IDs have left the server:\n${lines.join('\n')}`,
