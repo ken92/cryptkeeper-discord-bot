@@ -87,12 +87,50 @@ function* claimsListChunks(
   let currentLetter = '';
   let currentChunk = '';
 
-  for (const claim of claims) {
-    const partnername = String(claim.partnername || '');
-    let firstLetter = partnername.charAt(0).toUpperCase() || '';
-    if (!/[A-Z]/.test(firstLetter)) {
-      firstLetter = 'Non-Alphabetic';
+  // priority list: earlier = higher priority
+  const PRIORITY = ['non_sharing', 'selective', 'sharing'];
+
+  const pickPriority = (set: Set<string> | null) => {
+    if (!set || set.size === 0) return null;
+    for (const p of PRIORITY) if (set.has(p)) return p;
+    return Array.from(set)[0] ?? null;
+  };
+
+  for (let i = 0; i < claims.length; i++) {
+    const firstClaim = claims[i];
+    const partnernameRaw = String(firstClaim.partnername || '').trim();
+    if (!partnernameRaw) continue;
+
+    const normalized = partnernameRaw.toLowerCase();
+
+    const generalSet = new Set<string>();
+    const romanticSet = new Set<string>();
+    const platonicSet = new Set<string>();
+    let chosenPartnerSource = String(firstClaim.partnersource || '').trim() || '';
+
+    let j = i;
+    while (j < claims.length) {
+      const c = claims[j];
+      const nm = String(c.partnername || '').trim().toLowerCase();
+      if (nm !== normalized) break;
+
+      if (c.sharingstatus) generalSet.add(String(c.sharingstatus));
+      if (c.romantic_sharingstatus) romanticSet.add(String(c.romantic_sharingstatus));
+      if (c.platonic_sharingstatus) platonicSet.add(String(c.platonic_sharingstatus));
+      if (!chosenPartnerSource && c.partnersource) chosenPartnerSource = String(c.partnersource || '').trim();
+
+      j++;
     }
+    // advance outer loop to end of group
+    i = j - 1;
+
+    const chosenGeneral = pickPriority(generalSet);
+    const chosenRomantic = pickPriority(romanticSet);
+    const chosenPlatonic = pickPriority(platonicSet);
+
+    // build the row now that we know there are no more duplicates for this partner
+    let firstLetter = partnernameRaw.charAt(0).toUpperCase() || '';
+    if (!/[A-Z]/.test(firstLetter)) firstLetter = 'Non-Alphabetic';
 
     let row = '';
     if (firstLetter !== currentLetter) {
@@ -101,15 +139,16 @@ function* claimsListChunks(
     }
 
     if (oneSharingStatus) {
-      const status = claim.sharingstatus || claim.romantic_sharingstatus || claim.platonic_sharingstatus || '';
-      row += `${statusEmojis[status] || ''} ${partnername} (${claim.partnersource || ''})\n`;
+      // prefer general chosen; otherwise fall back to romantic/platonic picks
+      const status = chosenGeneral ?? chosenRomantic ?? chosenPlatonic ?? '';
+      row += `${statusEmojis[status] || ''} ${partnernameRaw} (${chosenPartnerSource || ''})\n`;
     } else {
-      row += `**${partnername} (${claim.partnersource || ''})**\n`;
-      row += `Romantic: ${statusEmojis[claim.romantic_sharingstatus] || ''} `;
-      row += `Platonic: ${statusEmojis[claim.platonic_sharingstatus] || ''}\n\n`;
+      row += `**${partnernameRaw} (${chosenPartnerSource || ''})**\n`;
+      row += `Romantic: ${statusEmojis[chosenRomantic || ''] || ''} `;
+      row += `Platonic: ${statusEmojis[chosenPlatonic || ''] || ''}\n\n`;
     }
 
-    // if adding this row would exceed maxLength, yield current chunk first
+    // chunking: if adding this row would exceed maxLength, yield current chunk first
     if ((currentChunk.length + row.length) > maxLength) {
       if (currentChunk) {
         yield currentChunk;
