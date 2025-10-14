@@ -87,7 +87,6 @@ function* claimsListChunks(
   let currentLetter = '';
   let currentChunk = '';
 
-  // priority list: earlier = higher priority
   const PRIORITY = ['non_sharing', 'selective', 'sharing'];
 
   const pickPriority = (set: Set<string> | null) => {
@@ -139,8 +138,7 @@ function* claimsListChunks(
     }
 
     if (oneSharingStatus) {
-      // prefer general chosen; otherwise fall back to romantic/platonic picks
-      const status = chosenGeneral ?? chosenRomantic ?? chosenPlatonic ?? '';
+      const status = pickPriority(new Set([chosenGeneral, chosenRomantic, chosenPlatonic, 'non_sharing'].filter(s => typeof s === 'string'))) || 'non_sharing';
       row += `${statusEmojis[status] || ''} ${partnernameRaw} (${chosenPartnerSource || ''})\n`;
     } else {
       row += `**${partnernameRaw} (${chosenPartnerSource || ''})**\n`;
