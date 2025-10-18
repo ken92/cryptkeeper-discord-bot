@@ -138,7 +138,7 @@ function* claimsListChunks(
     }
 
     if (oneSharingStatus) {
-      const status = pickPriority(new Set([chosenGeneral, chosenRomantic, chosenPlatonic, 'non_sharing'].filter(s => typeof s === 'string'))) || 'non_sharing';
+      const status = pickPriority(new Set([chosenGeneral, chosenRomantic, chosenPlatonic].filter(s => typeof s === 'string'))) || 'non_sharing';
       row += `${statusEmojis[status] || ''} ${partnernameRaw} (${chosenPartnerSource || ''})\n`;
     } else {
       row += `**${partnernameRaw} (${chosenPartnerSource || ''})**\n`;
