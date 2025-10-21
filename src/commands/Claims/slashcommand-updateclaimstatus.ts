@@ -1,47 +1,33 @@
 import type DiscordBot from '../../client/DiscordBot';
-import type { ChatInputCommandInteraction, User } from 'discord.js';
-import { SlashCommandBuilder } from 'discord.js';
+import type { ChatInputCommandInteraction, Message, User } from 'discord.js';
+import { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder } from 'discord.js';
 import ApplicationCommand from '../../structure/ApplicationCommand';
 import claimLock from '../../utils/claimLock';
+import ClaimHelper from '../../utils/ClaimHelper';
 
 const command = new SlashCommandBuilder()
   .setName('updateclaimstatus')
   .setDescription('Update the status of a partner claim')
   .addStringOption(option =>
-    option.setName('partnername')
-      .setDescription('The name of the claimed partner')
+    option.setName('username')
+      .setDescription('The username of the person that requested the partner')
       .setRequired(false))
   .addUserOption(option =>
     option.setName('user')
-      .setDescription('The user that made the claim')
+      .setDescription('The user that requested the partner (@user notation)')
       .setRequired(false))
   .addStringOption(option =>
-    option.setName('romantic_sharingstatus')
-      .setDescription('The romantic sharing status of the partner')
-      .setRequired(false)
-      .addChoices(
-        { name: 'Sharing', value: 'sharing' },
-        { name: 'Non-sharing', value: 'non_sharing' },
-        { name: 'Selective', value: 'selective' }
-      ))
+    option.setName('userid')
+      .setDescription('The user ID of the person that requested the partner')
+      .setRequired(false))
   .addStringOption(option =>
-    option.setName('platonic_sharingstatus')
-      .setDescription('The platonic sharing status of the partner')
-      .setRequired(false)
-      .addChoices(
-        { name: 'Sharing', value: 'sharing' },
-        { name: 'Non-sharing', value: 'non_sharing' },
-        { name: 'Selective', value: 'selective' }
-      ))
+    option.setName('partnername')
+      .setDescription('The name of the partner')
+      .setRequired(false))
   .addStringOption(option =>
-    option.setName('sharingstatus')
-      .setDescription('The sharing status of the partner')
-      .setRequired(false)
-      .addChoices(
-        { name: 'Sharing', value: 'sharing' },
-        { name: 'Non-sharing', value: 'non_sharing' },
-        { name: 'Selective', value: 'selective' }
-      ))
+    option.setName('partnersource')
+      .setDescription("The partner's source")
+      .setRequired(false))
   .toJSON();
 
 export default new ApplicationCommand<ChatInputCommandInteraction>({
@@ -50,87 +36,212 @@ export default new ApplicationCommand<ChatInputCommandInteraction>({
     cooldown: 1000
   },
   run: async (client: DiscordBot, interaction: ChatInputCommandInteraction) => {
-    const release = await claimLock.acquire();
-    try {
-      const guildId = interaction.guild?.id;
-      if (!guildId) {
-        await interaction.reply({ content: 'This command must be used in a guild.', ephemeral: true });
-        return;
-      }
-
-      const user: User | null = interaction.options.getUser('user');
-      const userId = user?.id ?? null;
-
-      const partnername = interaction.options.getString('partnername')?.trim() ?? null;
-      if (!partnername && !userId) {
-        await interaction.reply({
-          content: 'You must provide a partner name or a user to update claims.',
-          ephemeral: true
-        });
-        return;
-      }
-
-      const sharingstatus = interaction.options.getString('sharingstatus') ?? null;
-      const romantic_sharingstatus = interaction.options.getString('romantic_sharingstatus') ?? null;
-      const platonic_sharingstatus = interaction.options.getString('platonic_sharingstatus') ?? null;
-      if (!sharingstatus && !romantic_sharingstatus && !platonic_sharingstatus) {
-        await interaction.reply({
-          content: 'You must provide at least one sharing status (sharingstatus, romantic_sharingstatus, or platonic_sharingstatus).',
-          ephemeral: true
-        });
-        return;
-      }
-
-      // If a general sharingstatus was provided, apply to both romantic and platonic unless specific values provided
-      let romanticStatus = romantic_sharingstatus;
-      let platonicStatus = platonic_sharingstatus;
-      if (sharingstatus) {
-        if (!romanticStatus) romanticStatus = sharingstatus;
-        if (!platonicStatus) platonicStatus = sharingstatus;
-      }
-
-      const claimsKey = `${guildId}-claims`;
-      const claims: any[] = client.database.get(claimsKey) || [];
-
-      const normalizedPartner = partnername ? partnername.toLowerCase() : null;
-
-      // find matching claims (filter by partnername if provided, and by userId if provided)
-      const matchedIndexes: number[] = [];
-      for (let i = 0; i < claims.length; i++) {
-        const c = claims[i];
-        const matchesPartner = normalizedPartner ? String(c.partnername || '').toLowerCase() === normalizedPartner : true;
-        const matchesUser = userId ? String(c.userId || c.userid || '') === userId : true;
-        if (matchesPartner && matchesUser) matchedIndexes.push(i);
-      }
-
-      if (matchedIndexes.length === 0) {
-        await interaction.reply({
-          content: `Did not find any claims for partner "${partnername ?? 'any'}"${userId ? ` by user <@${userId}>` : ''}.`,
-          ephemeral: true
-        });
-        return;
-      }
-
-      // update matched claims
-      for (const idx of matchedIndexes) {
-        const claim = claims[idx];
-        if (sharingstatus) claim.sharingstatus = sharingstatus.trim();
-        if (romanticStatus) claim.romantic_sharingstatus = romanticStatus.trim();
-        if (platonicStatus) claim.platonic_sharingstatus = platonicStatus.trim();
-        // update lastEdited metadata
-        claim.lastEditedById = interaction.user.id;
-        claim.lastEditedByUsername = `${interaction.user.username}#${(interaction.user as any).discriminator || ''}`;
-        claim.lastEditedTimestamp = Date.now();
-      }
-
-      client.database.set(claimsKey, claims);
-
-      await interaction.reply({
-        content: `${matchedIndexes.length} claim(s) updated successfully.`
-      });
-    } finally {
-      release();
+    const guildId = interaction.guild?.id;
+    if (!guildId) {
+      await interaction.reply({ content: 'This command must be used in a guild.', ephemeral: true });
+      return;
     }
+
+    const helper = new ClaimHelper(client);
+    const claims: any[] = helper.getClaims(guildId) || [];
+
+    const username = interaction.options.getString('username') || null;
+    const userId = interaction.options.getString('userid') || null;
+    const user = interaction.options.getUser('user') || null;
+    const partnerName = interaction.options.getString('partnername') || null;
+    const partnerSource = interaction.options.getString('partnersource') || null;
+
+    if (!username && !partnerName && !partnerSource && !user && !userId) {
+      await interaction.reply({
+        content: 'You must provide at least one search criteria (username, user, user ID, partner name, or partner source).',
+        ephemeral: true
+      });
+      return;
+    }
+
+    const usernameFromId = userId ? (await client.users.fetch(userId).catch(() => null))?.username ?? null : null;
+    const usernameFromUser = user ? user.username : null;
+    const finalUsername = usernameFromId || usernameFromUser || username;
+    const cleanedUsername = finalUsername ? finalUsername.replace(/<@!?(\d+)>/, '$1') : null;
+    const trimmedUsername = cleanedUsername ? cleanedUsername.trim().toLowerCase() : null;
+
+    const trimmedPartnerName = partnerName ? partnerName.trim().toLowerCase() : null;
+    const trimmedPartnerSource = partnerSource ? partnerSource.trim().toLowerCase() : null;
+
+    const filteredClaims = claims.filter(c => {
+      const claimUsername = c.username ? String(c.username).toLowerCase() : '';
+      const claimPartnerName = c.partnername ? String(c.partnername).toLowerCase() : '';
+      const claimPartnerSource = c.partnersource ? String(c.partnersource).toLowerCase() : '';
+
+      const isMatchingUsername = trimmedUsername ? claimUsername === trimmedUsername : true;
+      const isMatchingPartnerName = trimmedPartnerName ? claimPartnerName.includes(trimmedPartnerName) : true;
+      const isMatchingPartnerSource = trimmedPartnerSource ? claimPartnerSource.includes(trimmedPartnerSource) : true;
+      return isMatchingUsername && isMatchingPartnerName && isMatchingPartnerSource;
+    });
+
+    if (filteredClaims.length === 0) {
+      await interaction.reply({
+        content: 'No claims found matching the provided criteria.',
+        ephemeral: true
+      });
+      return;
+    }
+
+    const claimOptions = filteredClaims.slice(0, 25).map((c) => {
+      const fullIndex = claims.indexOf(c);
+      const label = String(c.partnername).slice(0, 100) || 'unknown';
+      const descParts = [];
+      if (c.username) descParts.push(String(c.username));
+      if (c.partnersource) descParts.push(String(c.partnersource));
+      const description = descParts.join(' • ').slice(0, 100) || undefined;
+      return {
+        label,
+        description,
+        value: String(fullIndex)
+      };
+    });
+
+    const claimSelect = new StringSelectMenuBuilder()
+      .setCustomId('claim_select')
+      .setPlaceholder('Select a claim to update')
+      .addOptions(claimOptions);
+
+    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(claimSelect);
+
+    const prompt = (await interaction.reply({
+      content: `Found ${filteredClaims.length} matching claim(s). Select the claim to update:`,
+      components: [row.toJSON() as unknown as any],
+      ephemeral: true,
+      fetchReply: true
+    })) as Message<boolean>;
+
+    const collector = prompt.createMessageComponentCollector({
+      filter: (i) => i.user.id === interaction.user.id,
+      max: 1,
+      time: 30_000
+    });
+
+    collector.on('collect', async (selectInteraction) => {
+      const selectedValue = (selectInteraction as any).values?.[0];
+      if (typeof selectedValue === 'undefined') {
+        await selectInteraction.update({ content: 'No selection made.', components: [] });
+        return;
+      }
+      const selectedIndex = Number(selectedValue);
+      const claimToUpdate = helper.getClaims(guildId)[selectedIndex];
+      if (!claimToUpdate) {
+        await selectInteraction.update({ content: 'Selected claim no longer exists.', components: [] });
+        return;
+      }
+
+      const scopeSelect = new StringSelectMenuBuilder()
+        .setCustomId(`scope_select::${selectedIndex}`)
+        .setPlaceholder('Select which status to update')
+        .addOptions([
+          { label: 'General (apply to all)', value: 'general' },
+          { label: 'Romantic', value: 'romantic' },
+          { label: 'Platonic', value: 'platonic' }
+        ]);
+
+      const scopeRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(scopeSelect);
+      await selectInteraction.update({
+        content: `Selected: ${claimToUpdate.partnername} — choose which status to update:`,
+        components: [scopeRow.toJSON() as unknown as any]
+      });
+
+      const scopeCollector = prompt.createMessageComponentCollector({
+        filter: (si) => si.user.id === interaction.user.id,
+        max: 1,
+        time: 30_000
+      });
+
+      scopeCollector.on('collect', async (si) => {
+        const scope = (si as any).values?.[0] as 'general' | 'romantic' | 'platonic';
+        if (!scope) {
+          await si.update({ content: 'No scope selected.', components: [] });
+          return;
+        }
+
+        const statusSelect = new StringSelectMenuBuilder()
+          .setCustomId(`status_select::${selectedIndex}::${scope}`)
+          .setPlaceholder('Select new status')
+          .addOptions([
+            { label: 'Sharing', value: 'sharing' },
+            { label: 'Non-sharing', value: 'non_sharing' },
+            { label: 'Selective', value: 'selective' }
+          ]);
+        const statusRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(statusSelect);
+
+        await si.update({
+          content: `Choose the new status for ${claimToUpdate.partnername} (${scope}):`,
+          components: [statusRow.toJSON() as unknown as any]
+        });
+
+        const statusCollector = prompt.createMessageComponentCollector({
+          filter: (sii) => sii.user.id === interaction.user.id,
+          max: 1,
+          time: 30_000
+        });
+
+        statusCollector.on('collect', async (sii) => {
+          const chosenStatus = (sii as any).values?.[0] as string;
+          if (!chosenStatus) {
+            await sii.update({ content: 'No status selected.', components: [] });
+            return;
+          }
+
+          // perform update under lock
+          const release = await claimLock.acquire();
+          try {
+            const allClaims = helper.getClaims(guildId);
+            const target = allClaims[selectedIndex];
+            if (!target) {
+              await sii.update({ content: 'Claim disappeared before update. No changes made.', components: [] });
+              return;
+            }
+            if (scope === 'general') {
+              target.sharingstatus = chosenStatus;
+              target.romantic_sharingstatus = chosenStatus;
+              target.platonic_sharingstatus = chosenStatus;
+            } else if (scope === 'romantic') {
+              target.romantic_sharingstatus = chosenStatus;
+            } else {
+              target.platonic_sharingstatus = chosenStatus;
+            }
+            target.lastEditedById = interaction.user.id;
+            target.lastEditedByUsername = `${interaction.user.username}#${(interaction.user as any).discriminator || ''}`;
+            target.lastEditedTimestamp = Date.now();
+
+            helper.setClaims(guildId, allClaims);
+          } finally {
+            release();
+          }
+
+          await sii.update({
+            content: `Updated ${claimToUpdate.partnername} (${scope}) → ${chosenStatus}`,
+            components: []
+          });
+        });
+
+        statusCollector.on('end', (collected) => {
+          if (collected.size === 0) {
+            interaction.editReply({ content: 'Status selection timed out. No changes made.', components: [] }).catch(() => {});
+          }
+        });
+      });
+
+      scopeCollector.on('end', (collected) => {
+        if (collected.size === 0) {
+          interaction.editReply({ content: 'Scope selection timed out. No changes made.', components: [] }).catch(() => {});
+        }
+      });
+    });
+
+    collector.on('end', (collected) => {
+      if (collected.size === 0) {
+        interaction.editReply({ content: 'Claim selection timed out. No changes made.', components: [] }).catch(() => {});
+      }
+    });
   }
 });
 
