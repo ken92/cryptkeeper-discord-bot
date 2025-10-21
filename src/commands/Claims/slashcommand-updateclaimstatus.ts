@@ -8,26 +8,10 @@ import ClaimHelper from '../../utils/ClaimHelper';
 const command = new SlashCommandBuilder()
   .setName('updateclaimstatus')
   .setDescription('Update the status of a partner claim')
-  .addStringOption(option =>
-    option.setName('username')
-      .setDescription('The username of the person that requested the partner')
-      .setRequired(false))
   .addUserOption(option =>
     option.setName('user')
       .setDescription('The user that requested the partner (@user notation)')
-      .setRequired(false))
-  .addStringOption(option =>
-    option.setName('userid')
-      .setDescription('The user ID of the person that requested the partner')
-      .setRequired(false))
-  .addStringOption(option =>
-    option.setName('partnername')
-      .setDescription('The name of the partner')
-      .setRequired(false))
-  .addStringOption(option =>
-    option.setName('partnersource')
-      .setDescription("The partner's source")
-      .setRequired(false))
+      .setRequired(true))
   .toJSON();
 
 export default new ApplicationCommand<ChatInputCommandInteraction>({
