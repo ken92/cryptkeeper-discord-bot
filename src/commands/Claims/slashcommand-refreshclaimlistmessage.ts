@@ -69,6 +69,9 @@ ${statusEmojis.selective} = Selective sharing!`);
   return true;
 };
 
+const getNormalizedClaimKey = (claim: any): string =>
+  `${String(claim.partnername || '').trim().toLowerCase()}-${String(claim.partnersource || '').trim().toLowerCase()}`;
+
 function* claimsListChunks(
   client: DiscordBot,
   guildId: string,
@@ -79,7 +82,7 @@ function* claimsListChunks(
 ): Generator<string, void, unknown> {
   // sort claims by partnername (case-insensitive)
   claims.sort((a: any, b: any) =>
-    String(a.partnername).toLowerCase() > String(b.partnername).toLowerCase() ? 1 : -1
+    getNormalizedClaimKey(a) > getNormalizedClaimKey(b) ? 1 : -1
   );
   // persist sorted claims back to DB (keeps consistent order)
   client.database.set(`${guildId}-claims`, claims as never);
@@ -98,25 +101,24 @@ function* claimsListChunks(
   for (let i = 0; i < claims.length; i++) {
     const firstClaim = claims[i];
     const partnernameRaw = String(firstClaim.partnername || '').trim();
+    const partnersourceRaw = String(firstClaim.partnersource || '').trim() || '';
     if (!partnernameRaw) continue;
 
-    const normalized = partnernameRaw.toLowerCase();
-
+    const normalized = getNormalizedClaimKey(firstClaim);
+    
     const generalSet = new Set<string>();
     const romanticSet = new Set<string>();
     const platonicSet = new Set<string>();
-    let chosenPartnerSource = String(firstClaim.partnersource || '').trim() || '';
 
     let j = i;
     while (j < claims.length) {
       const c = claims[j];
-      const nm = String(c.partnername || '').trim().toLowerCase();
+      const nm = getNormalizedClaimKey(c);
       if (nm !== normalized) break;
 
       if (c.sharingstatus) generalSet.add(String(c.sharingstatus));
       if (c.romantic_sharingstatus) romanticSet.add(String(c.romantic_sharingstatus));
       if (c.platonic_sharingstatus) platonicSet.add(String(c.platonic_sharingstatus));
-      if (!chosenPartnerSource && c.partnersource) chosenPartnerSource = String(c.partnersource || '').trim();
 
       j++;
     }
@@ -139,9 +141,9 @@ function* claimsListChunks(
 
     if (oneSharingStatus) {
       const status = pickPriority(new Set([chosenGeneral, chosenRomantic, chosenPlatonic].filter(s => typeof s === 'string'))) || 'non_sharing';
-      row += `${statusEmojis[status] || ''} ${partnernameRaw} (${chosenPartnerSource || ''})\n`;
+      row += `${statusEmojis[status] || ''} ${partnernameRaw} (${partnersourceRaw || ''})\n`;
     } else {
-      row += `**${partnernameRaw} (${chosenPartnerSource || ''})**\n`;
+      row += `**${partnernameRaw} (${partnersourceRaw || ''})**\n`;
       row += `Romantic: ${statusEmojis[chosenRomantic || ''] || ''} `;
       row += `Platonic: ${statusEmojis[chosenPlatonic || ''] || ''}\n\n`;
     }
